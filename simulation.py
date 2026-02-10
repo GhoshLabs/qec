@@ -13,7 +13,11 @@ def run_trial(code, p, decoder):
     rX = [a^b for a,b in zip(eX, eX_hat)]
     rZ = [a^b for a,b in zip(eZ, eZ_hat)]
 
-    fail_Z = logical_parity(rZ, code.logical_Z_support())
-    fail_X = logical_parity(rX, code.logical_X_support())
+    # Check X errors against Z logical operators
+    fail_X1 = logical_parity(rX, code.logical_Z_conjugate())
+    fail_X2 = logical_parity(rX, code.logical_X_conjugate())
+    # Check Z errors against X logical operators
+    fail_Z1 = logical_parity(rZ, code.logical_X_support())
+    fail_Z2 = logical_parity(rZ, code.logical_Z_support())
 
-    return fail_Z or fail_X
+    return fail_X1 or fail_Z1 or fail_X2 or fail_Z2

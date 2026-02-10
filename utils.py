@@ -63,31 +63,36 @@ def mwpm_initialize_e_given_syndrome(H, syndrome):
         return e
     else:
         # fallback: simple gaussian elimination mod 2 to find a particular solution
-        # Solve H x = s over GF(2).
-        A = np.concatenate([H.copy() % 2, syndrome.reshape(-1,1)], axis=1).astype(int)
-        # row reduce (m x (n+1))
-        r = 0
-        pivots = []
-        for c in range(n):
-            # find row with 1 in column c at or below row r
-            for i in range(r, m):
-                if A[i, c] == 1:
-                    A[[r, i]] = A[[i, r]]
-                    break
-            else:
-                continue
-            pivots.append(c)
-            # eliminate other rows
-            for i in range(m):
-                if i != r and A[i, c] == 1:
-                    A[i, :] ^= A[r, :]
-            r += 1
-            if r == m:
+        e= ge_initialize_given_syndrome(H, syndrome)
+        return e
+    
+def ge_initialize_given_syndrome(H, syndrome):
+    m, n = H.shape
+    # Solve H x = s over GF(2).
+    A = np.concatenate([H.copy() % 2, syndrome.reshape(-1,1)], axis=1).astype(int)
+    # row reduce (m x (n+1))
+    r = 0
+    pivots = []
+    for c in range(n):
+        # find row with 1 in column c at or below row r
+        for i in range(r, m):
+            if A[i, c] == 1:
+                A[[r, i]] = A[[i, r]]
                 break
-        # now set free variables to 0 and back-substitute to get x
-        x = np.zeros(n, dtype=int)
-        # for each pivot row, find pivot column
-        for i_row in range(min(m, len(pivots))):
-            c = pivots[i_row]
-            x[c] = A[i_row, -1]  # RHS
-        return x
+        else:
+            continue
+        pivots.append(c)
+        # eliminate other rows
+        for i in range(m):
+            if i != r and A[i, c] == 1:
+                A[i, :] ^= A[r, :]
+        r += 1
+        if r == m:
+            break
+    # now set free variables to 0 and back-substitute to get x
+    x = np.zeros(n, dtype=int)
+    # for each pivot row, find pivot column
+    for i_row in range(min(m, len(pivots))):
+        c = pivots[i_row]
+        x[c] = A[i_row, -1]  # RHS
+    return x

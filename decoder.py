@@ -42,17 +42,21 @@ class MHDecoder(Decoder):
         self.Zstab_vecs = [self.HZ[i] for i in range(self.HZ.shape[0])]
         self.Xstab_vecs = [self.HX[i] for i in range(self.HX.shape[0])]
 
-    def decode(self, syndZ, syndX):
+    def decode(self, syndZ, syndX, init_method='MWPM'):
         # Initial solution via MWPM or Gaussian elimination
-        eX_init = utils.mwpm_initialize_e_given_syndrome(self.HZ, syndZ)
-        eZ_init = utils.mwpm_initialize_e_given_syndrome(self.HX, syndX)
+        if init_method == 'MWPM':
+            eX_init = utils.mwpm_initialize_e_given_syndrome(self.HZ, syndZ)
+            eZ_init = utils.mwpm_initialize_e_given_syndrome(self.HX, syndX)
+        else:
+            eX_init = utils.ge_initialize_given_syndrome(self.HZ, syndZ)
+            eZ_init = utils.ge_initialize_given_syndrome(self.HX, syndX)
 
         # MH refinement for X errors
         outX = metropolis_hastings_on_stabilizers(
             self.code,
             self.HZ,
             eX_init.copy(),
-            self.Zstab_vecs,
+            self.Xstab_vecs,
             q_error=self.q,
             n_samples=self.n_samples,
             burn_in=self.burn_in
@@ -63,12 +67,20 @@ class MHDecoder(Decoder):
             self.code,
             self.HX,
             eZ_init.copy(),
-            self.Xstab_vecs,
+            self.Zstab_vecs,
             q_error=self.q,
             n_samples=self.n_samples,
             burn_in=self.burn_in
         )
 
-        return outX['e_map'], outZ['e_map']
+        return outX['best_sample'], outZ['best_sample']
     
+class GEDecoder(Decoder):
+    def __init__(self, code):
+        self.code = code
+        self.HZ, self.HX = code.stabilizer_matrices()
 
+    def decode(self, syndZ, syndX):
+        eX_hat = utils.ge_initialize_given_syndrome(self.HZ, syndZ)
+        eZ_hat = utils.ge_initialize_given_syndrome(self.HX, syndX)
+        return eX_hat, eZ_hat

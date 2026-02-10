@@ -3,6 +3,7 @@ from noise import depolarizing_noise
 from syndrome import syndrome_from_eX, syndrome_from_eZ
 import utils
 from MH_sampler import metropolis_hastings_on_stabilizers
+from simulation import run_trial
 
 def plot_mh_traces(code, p, n_samples=3000, burn_in=500):
     """
@@ -30,12 +31,12 @@ def plot_mh_traces(code, p, n_samples=3000, burn_in=500):
 
     # Run MH chains
     outX = metropolis_hastings_on_stabilizers(
-        code, HZ, eX_init.copy(), Zstab_vecs,
+        code, HZ, eX_init.copy(), Xstab_vecs,
         q_error=q, n_samples=n_samples, burn_in=burn_in
     )
 
     outZ = metropolis_hastings_on_stabilizers(
-        code, HX, eZ_init.copy(), Xstab_vecs,
+        code, HX, eZ_init.copy(), Zstab_vecs,
         q_error=q, n_samples=n_samples, burn_in=burn_in
     )
 
@@ -55,3 +56,11 @@ def plot_mh_traces(code, p, n_samples=3000, burn_in=500):
 
     fig.tight_layout()
     plt.show()
+
+def error_rate_vs_n_sample(code, p, decoder, n_samples=1000):
+    failures = 0
+    rates = []
+    for i in range(n_samples):
+        failures += run_trial(code, p, decoder)
+        rates.append(failures / (i + 1))
+    return rates

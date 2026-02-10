@@ -40,10 +40,16 @@ def metropolis_hastings_on_stabilizers(code, H_stab, init_e, stabilizer_vectors,
     post_samples = np.array(samples[burn_in:])
     marginal = post_samples.mean(axis=0)
     e_map = (marginal > 0.5).astype(int)
+
+    # Find the sample with the highest probability (lowest weight)
+    trace_logp = np.array(trace_logp)
+    best_idx = np.argmax(trace_logp)
+    best_sample = samples[best_idx]
+
     return {
-        'trace_logp': np.array(trace_logp),
+        'trace_logp': trace_logp,
         'marginal': marginal,
         'e_map': e_map,
-        'samples': post_samples
+        'samples': post_samples,
+        'best_sample': best_sample
     }
-

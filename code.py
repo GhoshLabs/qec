@@ -15,18 +15,6 @@ class ToricCode:
     def _edge_index_vert(self, x, y):
         return self.vert_offset + (y % self.L) * self.L + (x % self.L)
 
-    def _build_Zs(self):
-        Zs = []
-        for y in range(self.L):
-            for x in range(self.L):
-                Zs.append([
-                    self._edge_index_hori(x, y),
-                    self._edge_index_vert(x, y),
-                    self._edge_index_hori(x, y+1),
-                    self._edge_index_vert(x+1, y),
-                ])
-        return Zs
-
     def _build_Xs(self):
         Xs = []
         for y in range(self.L):
@@ -34,16 +22,34 @@ class ToricCode:
                 Xs.append([
                     self._edge_index_hori(x, y),
                     self._edge_index_vert(x, y),
-                    self._edge_index_hori(x-1, y),
-                    self._edge_index_vert(x, y-1),
+                    self._edge_index_hori(x, y+1),
+                    self._edge_index_vert(x+1, y),
                 ])
         return Xs
 
+    def _build_Zs(self):
+        Zs = []
+        for y in range(self.L):
+            for x in range(self.L):
+                Zs.append([
+                    self._edge_index_hori(x, y),
+                    self._edge_index_vert(x, y),
+                    self._edge_index_hori(x-1, y),
+                    self._edge_index_vert(x, y-1),
+                ])
+        return Zs
+    
     def logical_Z_support(self):
         return [self._edge_index_vert(0, y) for y in range(self.L)]
 
     def logical_X_support(self):
         return [self._edge_index_hori(x, 0) for x in range(self.L)]
+    
+    def logical_X_conjugate(self):
+        return [self._edge_index_vert(x, 0) for x in range(self.L)]
+
+    def logical_Z_conjugate(self):
+        return [self._edge_index_hori(0, y) for y in range(self.L)]
     
     def stabilizer_matrices(self):
         HZ = np.zeros((len(self.Z_stabilizers), self.n), dtype=int)
@@ -56,4 +62,3 @@ class ToricCode:
             HX[i, stab] = 1
 
         return HZ, HX
-
