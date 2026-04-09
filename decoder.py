@@ -3,6 +3,7 @@ import numpy as np
 import itertools
 import random
 from MH_sampler import metropolis_hastings_on_stabilizers, metropolis_hastings_joint, metropolis_hastings_track_z, metropolis_hastings_avg_weight
+import ldpc
 
 class Decoder:
     def decode(self, syndZ, syndX):
@@ -298,4 +299,32 @@ class GEDecoder(Decoder):
     def decode(self, syndZ, syndX):
         eX_hat = utils.ge_initialize_given_syndrome(self.HZ, syndZ)
         eZ_hat = utils.ge_initialize_given_syndrome(self.HX, syndX)
+        return eX_hat, eZ_hat
+
+class BPDecoder(Decoder):
+    def __init__(self, code, p, max_iter=100, bp_method="product_sum"):
+        """
+        Initializes the Belief Propagation Decoder.
+
+        Args:
+            code: The quantum code (e.g., ToricCode, PlanarSurfaceCode) instance.
+            p: The physical error rate for depolarizing noise.
+            max_iter: Maximum number of iterations for the BP algorithm.
+            bp_method: The BP decoding method (e.g., "product_sum", "min_sum").
+        """
+        self.code = code
+        self.p = float(p)
+        self.max_iter = max_iter
+        self.bp_method = bp_method
+
+        self.HZ, self.HX = code.stabilizer_matrices()
+
+        # For X errors, HZ is the parity check matrix. The error rate for an X error is p/3.
+        self.bp_decoder_X = ldpc.bp_decoder(self.HZ, error_rate=self.p / 3, max_iter=self.max_iter, bp_method=self.bp_method)
+        # For Z errors, HX is the parity check matrix. The error rate for a Z error is p/3.
+        self.bp_decoder_Z = ldpc.bp_decoder(self.HX, error_rate=self.p / 3, max_iter=self.max_iter, bp_method=self.bp_method)
+
+    def decode(self, syndZ, syndX):
+        eX_hat = self.bp_decoder_X.decode(syndZ)
+        eZ_hat = self.bp_decoder_Z.decode(syndX)
         return eX_hat, eZ_hat

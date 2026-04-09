@@ -203,3 +203,75 @@ def metropolis_hastings_avg_weight(eX_init, eZ_init, all_stabs, n_X_stabs, q_err
     avg_weight = total_weight / n_post_burn_in if n_post_burn_in > 0 else cur_weight
             
     return avg_weight, best_eX, best_eZ
+
+def metropolis_hastings_coset_probs(eX_init, eZ_init, all_stabs, n_X_stabs, q_error, n_samples, burn_in, logicals_X, logicals_Z):
+    """
+    Estimates relative probabilities of logical cosets by running independent
+    MCMC chains starting in each logical sector.
+    """
+    if q_error == 0 or q_error == 1:
+         raise ValueError("q_error cannot be 0 or 1")
+    
+    log_odds = np.log(q_error / (1.0 - q_error))
+    m_stab = len(all_stabs)
+    num_classes = len(logicals_X)
+    
+    # Aggregated distribution across all chains
+    aggregated_probs = np.zeros(num_classes)
+    min_weights = np.full(num_classes, np.inf)
+
+    # 1. Run an independent chain for each logical class
+    for s in range(num_classes):
+        # Initialize chain specifically in sector s
+        cur_eX = eX_init ^ logicals_X[s]
+        cur_eZ = eZ_init ^ logicals_Z[s]
+        cur_weight = np.sum(cur_eX | cur_eZ)
+        cur_logp = cur_weight * log_odds
+        
+        # Accumulate ratios Z_k / Z_s for this chain
+        chain_Z_ratios = np.zeros(num_classes)
+        n_post_burn_in = 0
+
+        for i in range(n_samples):
+            # Standard MH step
+            j = random.randrange(m_stab)
+            svec = all_stabs[j]
+            is_X_stab = (j < n_X_stabs)
+            flip_indices = svec.nonzero()[0]
+            
+            if is_X_stab:
+                delta_w = np.sum((cur_eX[flip_indices] ^ 1) | cur_eZ[flip_indices]) - np.sum(cur_eX[flip_indices] | cur_eZ[flip_indices])
+                if (cur_logp + delta_w * log_odds) > cur_logp or random.random() < np.exp(delta_w * log_odds):
+                    cur_eX[flip_indices] ^= 1; cur_weight += delta_w; cur_logp += delta_w * log_odds
+            else:
+                delta_w = np.sum(cur_eX[flip_indices] | (cur_eZ[flip_indices] ^ 1)) - np.sum(cur_eX[flip_indices] | cur_eZ[flip_indices])
+                if (cur_logp + delta_w * log_odds) > cur_logp or random.random() < np.exp(delta_w * log_odds):
+                    cur_eZ[flip_indices] ^= 1; cur_weight += delta_w; cur_logp += delta_w * log_odds
+            
+            # 2. Track probability of all other sectors relative to current state
+            if i >= burn_in:
+                n_post_burn_in += 1
+                # Precompute relative logical shifts to determine weight in other sectors
+                for k in range(num_classes):
+                    lX_rel = logicals_X[s] ^ logicals_X[k]
+                    lZ_rel = logicals_Z[s] ^ logicals_Z[k]
+                    
+                    # Weight of the equivalent error configuration in sector k
+                    transformed_weight = np.sum((cur_eX ^ lX_rel) | (cur_eZ ^ lZ_rel))
+                    
+                    # Track minimum weight encountered for each class
+                    if transformed_weight < min_weights[k]:
+                        min_weights[k] = transformed_weight
+
+                    # Probability ratio P(e_k) / P(e_s)
+                    chain_Z_ratios[k] += np.exp((transformed_weight - cur_weight) * log_odds)
+
+        if n_post_burn_in > 0:
+            # Normalize the distribution estimated by this specific chain
+            # This prevents chains stuck in high-weight sectors from dominating the aggregation
+            chain_dist = chain_Z_ratios / n_post_burn_in
+            total_chain_mass = np.sum(chain_dist)
+            if total_chain_mass > 0:
+                aggregated_probs += (chain_dist / total_chain_mass)
+    
+    return aggregated_probs, min_weights

@@ -2,11 +2,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import random
+import csv
+from code import ToricCode, PlanarSurfaceCode
 from noise import depolarizing_noise
 from syndrome import syndrome_from_eX, syndrome_from_eZ
 import utils
 from MH_sampler import metropolis_hastings_on_stabilizers
 from simulation import run_trial
+from decoder import MHDecoderParallel
+from threshold import logical_error_rate
 
 def plot_mh_traces(code, p, decoder_type='MH', n_samples=3000, burn_in=500):
     """
@@ -204,10 +208,23 @@ def plot_mh_traces(code, p, decoder_type='MH', n_samples=3000, burn_in=500):
     else:
         raise ValueError(f"Unknown decoder_type: {decoder_type}")
 
-def error_rate_vs_n_sample(code, p, decoder, n_samples=1000):
-    failures = 0
-    rates = []
-    for i in range(n_samples):
-        failures += run_trial(code, p, decoder)
-        rates.append(failures / (i + 1))
-    return rates
+def error_rate_vs_n_sample(L_list, p, trials, code_type='Toric', n_samples=1000):
+    results = {}
+    for L in L_list:
+        if code_type == 'Toric':
+            code = ToricCode(L)
+        elif code_type == 'Planar':
+            code = PlanarSurfaceCode(L)
+        else:
+            raise ValueError(f"Unknown code_type: {code_type}")
+        rates_for_L = []
+        decoder = MHDecoderParallel(code, q_error=p/(3-2*p), n_samples=n_samples, burn_in=(n_samples)//4)
+        rates_for_L.append(logical_error_rate(code, p, decoder, trials))
+        results[L] = rates_for_L
+    # Save to CSV
+    filename = f'error_rate_vs_L_p{p}_nsamples{n_samples}_{code_type}.csv'
+    with open(filename, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['L', 'rate'])
+        for L in L_list:
+            writer.writerow([L, results[L][0]])
