@@ -3,6 +3,8 @@ import numpy as np
 from itertools import product
 import matplotlib.pyplot as plt
 from MH_sampler import metropolis_hastings_coset_probs
+from noise import depolarizing_noise
+import syndrome as synd
 
 def coset_probs_exact(eX, eZ, code, p):
     """Calculates exact probabilities and returns (probs, labels)."""
@@ -79,7 +81,7 @@ def coset_probs_mcmc(eX, eZ, code, p, n_samples=20000, burn_in=5000):
     p_min_weights = [(p/3)**w * (1-p)**(n-w) for w in min_weights]
 
     # Normalize Z ratios to get relative coset probabilities
-    return Z_ratios / np.sum(Z_ratios), p_min_weights, labels
+    return Z_ratios / np.sum(Z_ratios), p_min_weights / np.sum(p_min_weights), labels
 
 def bar_graph(exact_probs, mcmc_probs, min_weight_probs, labels=None, title="Coset Probabilities Comparison"):
     """
@@ -106,8 +108,8 @@ def bar_graph(exact_probs, mcmc_probs, min_weight_probs, labels=None, title="Cos
     plt.legend()
     plt.grid(True, axis='y', linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.savefig('coset_probs_comparison.pdf')
-    plt.show()
+    plt.savefig('coset_probs_comparison_p08.pdf')
+    plt.close()
 
 def get_all_syndromes(code):
     def _gen_single_type(n_stabs):
@@ -147,16 +149,29 @@ def syndrome_probs(code, p):
             
     return probs_dict
 
-def bar_graph_syndrome_avg(code, p):
+def bar_graph_syndrome_avg(code, p, n_synd_samples=1000):
     HZ, HX = code.stabilizer_matrices()
-    # Get normalized syndrome probabilities P(S) from stat_mech/syndrome logic
-    probs_dict = syndrome_probs(code, p)
+    #probs_dict = syndrome_probs(code, p)
+    n = code.n
+    syndrome_counts = {}
+    for _ in range(n_synd_samples):
+        ex, ez = depolarizing_noise(n, p)
+        sZ = synd.syndrome_from_eX(ex, code.Z_stabilizers)
+        sX = synd.syndrome_from_eZ(ez, code.X_stabilizers)
+        key = (tuple(sZ), tuple(sX))
+        if key not in syndrome_counts:
+            syndrome_counts[key] = 0
+        syndrome_counts[key] += 1
     
     avg_probs = None
+    avg_mcmc_probs = None
+    avg_min_weight_probs = None
     labels = None
+
+    total = sum(syndrome_counts.values())
     
-    for (sz_tuple, sx_tuple), p_syndrome in probs_dict.items():
-        if p_syndrome == 0:
+    for (sz_tuple, sx_tuple), count in syndrome_counts.items():
+        '''if p_syndrome == 0:
             continue
             
         sz = np.array(sz_tuple)
@@ -164,35 +179,63 @@ def bar_graph_syndrome_avg(code, p):
         
         # Find representative error configuration for this syndrome
         eX = ge_initialize_given_syndrome(HZ, sz)
+        eZ = ge_initialize_given_syndrome(HX, sx)'''
+
+        w = count / total  # empirical syndrome weight
+        sz = np.array(sz_tuple)
+        sx = np.array(sx_tuple)
+
+        # Use a valid representative error for this syndrome
+        eX = ge_initialize_given_syndrome(HZ, sz)
         eZ = ge_initialize_given_syndrome(HX, sx)
         
         # Get exact coset probabilities: P(L_i and S)
         probs, current_labels = coset_probs_exact(eX, eZ, code, p)
         
+        # Get MCMC estimates and min weight probs for this syndrome
+        mcmc_probs, min_weight_probs, _ = coset_probs_mcmc(eX, eZ, code, p)
+        
         # Calculate P(L_i | S) = P(L_i and S) / P(S)
         s_sum = sum(probs)
         if s_sum > 0:
             cond_probs = np.array(probs) / s_sum
+            cond_mcmc_probs = np.array(mcmc_probs)
+            cond_min_weight_probs = np.array(min_weight_probs) / s_sum
             
             if avg_probs is None:
                 avg_probs = np.zeros(len(probs))
+                avg_mcmc_probs = np.zeros(len(probs))
+                avg_min_weight_probs = np.zeros(len(probs))
                 labels = current_labels
             
-            # Accumulate the weighted contribution: P(S) * P(L | S)
+            '''# Accumulate the weighted contribution: P(S) * P(L | S)
             avg_probs += p_syndrome * cond_probs
+            avg_mcmc_probs += p_syndrome * cond_mcmc_probs
+            avg_min_weight_probs += p_syndrome * cond_min_weight_probs'''
+            # Accumulate weighted contribution using empirical syndrome frequency
+            avg_probs += w * cond_probs
+            avg_mcmc_probs += w * cond_mcmc_probs
+            avg_min_weight_probs += w * cond_min_weight_probs
     
     if avg_probs is None:
         return
 
-    indices = np.arange(len(avg_probs))
-    plt.figure(figsize=(10, 6))
-    plt.bar(indices, avg_probs, color='mediumpurple', alpha=0.8)
+    num_cosets = len(avg_probs)
+    indices = np.arange(num_cosets)
+    width = 0.25
+
+    plt.figure(figsize=(12, 7))
+    plt.bar(indices - width, avg_probs, width, label='Exact Coset Prob', color='skyblue', alpha=0.8)
+    plt.bar(indices, avg_mcmc_probs, width, label='MCMC Coset Prob', color='orange', alpha=0.8)
+    plt.bar(indices + width, avg_min_weight_probs, width, label='Min Weight Error Prob', color='green', alpha=0.8)
+
     plt.xlabel('Logical Coset')
     plt.ylabel('Expected Probability')
     plt.title(f'Syndrome-Averaged Logical Coset Probabilities (L={code.L}, p={p})')
     if labels:
         plt.xticks(indices, labels, rotation=45)
     plt.yscale('log')
+    plt.legend()
     plt.grid(True, axis='y', linestyle='--', alpha=0.6)
     plt.tight_layout()
     plt.savefig(f'syndrome_avg_coset_probs_L{code.L}_p{p}.pdf')
